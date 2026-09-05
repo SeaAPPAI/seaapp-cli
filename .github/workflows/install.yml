@@ -1,0 +1,47 @@
+name: Public installation
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release tag
+        default: v0.1.0
+        required: true
+permissions:
+  contents: read
+jobs:
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15-intel, ubuntu-latest, ubuntu-24.04-arm, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      SEAAPP_VERSION: ${{ github.event.release.tag_name || inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install and upgrade Unix binary
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          export SEAAPP_INSTALL_DIR="$RUNNER_TEMP/seaapp-bin"
+          sh ./install.sh
+          sh ./install.sh
+          "$SEAAPP_INSTALL_DIR/seaapp" skills export "$RUNNER_TEMP/seaapp-skill" --json
+          "$SEAAPP_INSTALL_DIR/seaapp" init "$RUNNER_TEMP/seaapp-project" --template web --json
+          "$SEAAPP_INSTALL_DIR/seaapp" web build --dir "$RUNNER_TEMP/seaapp-project" --json
+          test -f "$RUNNER_TEMP/seaapp-skill/SKILL.md"
+      - name: Install and upgrade Windows binary
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $dir = "$env:RUNNER_TEMP\seaapp-bin"
+          ./install.ps1 -Version $env:SEAAPP_VERSION -InstallDir $dir
+          ./install.ps1 -Version $env:SEAAPP_VERSION -InstallDir $dir
+          & "$dir\seaapp.exe" skills export "$env:RUNNER_TEMP\seaapp-skill" --json
+          if ($LASTEXITCODE) { throw 'Skill export failed' }
+          & "$dir\seaapp.exe" init "$env:RUNNER_TEMP\seaapp-project" --template web --json
+          if ($LASTEXITCODE) { throw 'Scaffold failed' }
+          & "$dir\seaapp.exe" web build --dir "$env:RUNNER_TEMP\seaapp-project" --json
+          if ($LASTEXITCODE) { throw 'Bundle build failed' }
